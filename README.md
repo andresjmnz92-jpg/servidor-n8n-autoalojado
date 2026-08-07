@@ -50,10 +50,71 @@ creado empieza a recibir intentos de acceso a los pocos minutos de estar en lín
 
 **Siguiente:** apuntar un subdominio al servidor y levantar n8n con HTTPS.
 
+### Día 2 — 7 de agosto de 2026 · n8n con HTTPS y dominio propio
+
+n8n corriendo en `https://n8n.sikorre.com`, detrás de Caddy, con certificado de Let's Encrypt
+que se renueva solo. Desplegado sin editar un solo archivo en el servidor.
+
+**El flujo, que es el punto de este día:**
+
+1. Los archivos se escriben en el PC, dentro del repo clonado.
+2. `git push` a GitHub.
+3. En el servidor, `git clone` y `docker compose up -d`.
+
+El servidor es runtime, no build server. Lo único que existe allá y no está en este repo es
+el `.env` — porque contiene secretos y por definición no puede versionarse.
+
+**Lo que se montó:**
+
+- **Registro DNS tipo A** apuntando el subdominio al servidor, con el **proxy de Cloudflare
+  apagado** (nube gris). Con el proxy encendido, Cloudflare intercepta el desafío de
+  Let's Encrypt y el certificado nunca se emite.
+- **Caddy** como proxy inverso. Consigue y renueva el certificado sin intervención, y añade
+  cuatro cabeceras de seguridad (HSTS, nosniff, SAMEORIGIN, referrer-policy).
+- **n8n sin puertos publicados.** No está expuesto a internet: solo Caddy lo está, y le pasa
+  el tráfico por la red privada de Docker.
+- **Secretos generados en el servidor**, nunca copiados de otro lado ni escritos a mano:
+  `openssl rand -base64 32`. El `.env` con permisos `600`.
+- **2FA activado** en la cuenta de dueño.
+
+**Verificado, no asumido:**
+
+- `docker compose exec n8n wget -qO- http://localhost:5678/healthz` → `{"status":"ok"}`
+- `docker compose logs caddy | grep -i "certificate obtained"` → certificado emitido
+- `https://n8n.sikorre.com/healthz` desde fuera del servidor → HTTP 200
+- Certificado emitido para `n8n.sikorre.com` por Let's Encrypt, válido hasta el 5 de noviembre
+
+**El error del día: rotar la clave de cifrado rompió n8n.**
+
+Al cambiar `N8N_ENCRYPTION_KEY` en el `.env`, n8n entró en bucle de reinicio y el sitio
+devolvía 502. El log dijo lo que ninguna guía decía:
+
+```
+Error: Mismatching encryption keys. The encryption key in the settings file
+/home/node/.n8n/config does not match the N8N_ENCRYPTION_KEY env var.
+```
+
+
+
+**n8n guarda una segunda copia de la clave dentro de su volumen de datos.** Cambiar solo el
+`.env` no basta: hay que actualizar también `/home/node/.n8n/config`.
+
+Y hay una trampa antes de esa: la misma clave cifra el secreto del 2FA y sus códigos de
+respaldo. Rotarla con el 2FA activo te deja fuera de tu propia instancia. **El 2FA se
+desactiva antes de rotar y se reactiva después.**
+
+Ninguna de las dos cosas salió buscando en Google. Salieron de leer los registros del
+programa que estaba fallando.
+
+**Siguiente:** automatizar el `git pull` del servidor con GitHub Actions.
+
+
+
 ---
 
 ## Nota de seguridad
 
 Este repo es público. Aquí nunca entran: la llave SSH privada, archivos `.env`, ni
 contraseñas. El `.gitignore` los bloquea.
+
 
