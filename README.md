@@ -107,7 +107,50 @@ before rotating, re-enable it after.**
 Neither of those came from a search engine. Both came from reading the logs of the program
 that was failing.
 
-**Next:** automate the server's `git pull` with GitHub Actions.
+### Later the same day · Make it look after itself
+
+A server you have to babysit isn't finished. Three things, and not one custom script.
+
+**Automatic patching.** `unattended-upgrades` was already on, but **it never reboots by
+default** — so kernel patches sit downloaded and unused for months. Added a `99-automatic-reboot`
+drop-in with a reboot window.
+
+The detail almost everyone misses: that time uses the system clock, which here is **UTC**.
+Setting "02:00" would have rebooted the box at 9pm local, in the middle of the working evening.
+It's set to `08:00` UTC — 3am in Colombia.
+
+**A watchdog that lives off the server.** It runs on GitHub's machines every 30 minutes and asks
+whether `/healthz` answers. If it doesn't, the run goes red and the email arrives.
+
+It lives elsewhere on purpose: a monitor installed on the machine it watches cannot warn you the
+day that machine goes down.
+
+**Daily backups** of the n8n volume at 2am, an hour before the reboot window, with anything older
+than 7 days deleted automatically. Without that cleanup the disk fills up and the server goes
+down because of its own backups.
+
+**The lesson of the day, in numbers: −46 lines, +1.**
+
+The watchdog was first written as a 30-line Python script. It did exactly what this does:
+
+```
+curl -fsS --retry 3 --retry-delay 20 "$N8N_URL/healthz" | grep -q '"ok"'
+```
+
+Deleting the script also made the `actions/checkout` step redundant — there was no longer a file
+to check out. Removing code removed a whole dependency.
+
+**And the alarm was tested both ways.** Green against the real URL, and **red** against a path
+that doesn't exist. An alarm you have never seen fire is an assumption, not a warning.
+
+**What is still weak**, stated plainly:
+
+- The backup lives on the same disk it protects. It covers human error and a bad upgrade; it does
+  not cover that disk dying.
+- No backup has been restored yet. Until one is, it's an assumption.
+
+**Next:** move backups off the server, restore one as a drill, and automate the `git pull` with
+GitHub Actions.
 
 ---
 

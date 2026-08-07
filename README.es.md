@@ -106,7 +106,51 @@ desactiva antes de rotar y se reactiva después.**
 Ninguna de las dos cosas salió buscando en Google. Salieron de leer los registros del
 programa que estaba fallando.
 
-**Siguiente:** automatizar el `git pull` del servidor con GitHub Actions.
+### Segunda parte del día · Que se cuide solo
+
+Un servidor que hay que atender a mano no está terminado. Tres cosas, ningún script propio.
+
+**Parches automáticos.** `unattended-upgrades` ya venía encendido, pero **por defecto nunca
+reinicia** — así que los parches del kernel se quedan descargados sin efecto. Se añadió un
+drop-in `99-reinicio-automatico` con la ventana de reinicio.
+
+El detalle que se salta casi todo el mundo: esa hora usa el reloj del sistema, que aquí está en
+**UTC**. Poner "02:00" habría reiniciado el servidor a las 9 de la noche, en plena hora de uso.
+Va en `08:00` UTC, que son las 3 de la mañana en Colombia.
+
+**Un vigilante que vive fuera del servidor.** Corre en las máquinas de GitHub cada 30 minutos y
+pregunta si `/healthz` responde. Si no, el workflow termina en rojo y llega el correo.
+
+Vive fuera a propósito: un monitor instalado en la máquina que vigila no puede avisar el día que
+esa máquina se caiga.
+
+**Respaldos diarios** del volumen de n8n a las 2 de la mañana, una hora antes del reinicio, con
+borrado automático de los de más de 7 días. Sin esa limpieza, el disco se llena y el servidor
+termina cayéndose por culpa de sus propios respaldos.
+
+**La lección del día, en números: −46 líneas, +1.**
+
+El vigilante se escribió primero como un script de Python de 30 líneas. Hacía exactamente lo
+mismo que esto:
+
+```
+curl -fsS --retry 3 --retry-delay 20 "$N8N_URL/healthz" | grep -q '"ok"'
+```
+
+Al borrar el script también sobró el paso `actions/checkout`, porque ya no había ningún archivo
+que descargar. Quitar código quitó una dependencia entera.
+
+**Y la alarma se probó en los dos sentidos.** Verde con la URL buena, y **rojo** apuntándola a
+una ruta que no existe. Una alarma que nunca se ha visto sonar es una suposición, no un aviso.
+
+**Lo que todavía está débil**, dicho sin adornos:
+
+- El respaldo vive en el mismo disco que protege. Cubre el error humano y la actualización que
+  rompe algo; no cubre que el disco muera.
+- Ningún respaldo se ha restaurado todavía. Hasta que eso pase, es una suposición.
+
+**Siguiente:** sacar los respaldos del servidor, restaurar uno de prueba, y automatizar el
+`git pull` con GitHub Actions.
 
 ---
 
