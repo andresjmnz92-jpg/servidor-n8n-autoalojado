@@ -1,6 +1,3 @@
-# servidor-n8n-autoalojado
-n8n autoalojado con Docker y HTTPS en un VPS propio: montaje, seguridad y despliegue paso a paso.
-
 # Servidor de n8n autoalojado
 
 Monto mi propio servidor de automatización en un VPS: n8n corriendo en Docker, con HTTPS
