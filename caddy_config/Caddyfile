@@ -1,0 +1,19 @@
+{
+	email {$SSL_EMAIL}
+}
+
+{$N8N_SUBDOMAIN}.{$N8N_DOMAIN} {
+	reverse_proxy n8n:5678 {
+		flush_interval -1
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

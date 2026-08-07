@@ -9,3 +9,4 @@ homelab_key.pub
 # Datos de n8n
 n8n_data/
 postgres_data/
+local_files/
