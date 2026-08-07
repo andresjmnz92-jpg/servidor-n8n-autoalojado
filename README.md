@@ -1,120 +1,122 @@
-# Servidor de n8n autoalojado
+***English** · [Español](README.es.md)*
 
-Monto mi propio servidor de automatización en un VPS: n8n corriendo en Docker, con HTTPS
-y dominio propio, para dejar de depender de la nube de otro y poder ofrecer automatización
-a empresas que no quieren sus datos afuera.
+# Self-hosted n8n
 
-**Servidor:** Hetzner CX23 (2 vCPU, 4 GB RAM, 40 GB) · Ubuntu 26.04 LTS · Falkenstein, Alemania
-**Stack:** Docker + Docker Compose + n8n
-**Costo:** ~7 USD al mes
+My own automation server on a VPS: n8n in Docker, behind HTTPS on a domain I control. The
+point is not to save money on the cloud version — it is to run automation for companies whose
+data cannot leave their own servers.
+
+**Server:** Hetzner CX23 (2 vCPU, 4 GB RAM, 40 GB) · Ubuntu 26.04 LTS · Falkenstein, Germany
+**Stack:** Docker + Docker Compose + n8n + Caddy
+**Cost:** ~7 USD/month
 
 ---
 
-## Bitácora
+## Build log
 
-### Día 1 — 6 de agosto de 2026 · El servidor, asegurado
+### Day 1 — August 6, 2026 · Harden the server, then install
 
-Servidor creado y endurecido antes de instalar nada. El orden importa: un servidor recién
-creado empieza a recibir intentos de acceso a los pocos minutos de estar en línea.
+The server was locked down before anything was installed on it. Order matters: a freshly
+created server starts getting login attempts within minutes of coming online.
 
-**Lo que se hizo:**
+**What was done:**
 
-1. **Sistema actualizado** — `apt update && apt upgrade` y reinicio.
-2. **Usuario propio con sudo** — se dejó de trabajar como `root`. Un error tecleado como
-   root borra el sistema; como usuario normal, no.
-3. **Acceso solo con llave SSH** — se generó un par de llaves ed25519. La pública vive en
-   el servidor, la privada nunca sale de mi PC.
-4. **Contraseñas desactivadas** — archivo `/etc/ssh/sshd_config.d/99-endurecer.conf` con:
+1. **System updated** — `apt update && apt upgrade`, then a reboot.
+2. **A regular user with sudo** — stopped working as `root`. A typo as root wipes the
+   system; the same typo as a normal user does not.
+3. **SSH key authentication only** — generated an ed25519 key pair. The public key lives on
+   the server; the private key never leaves my machine.
+4. **Passwords turned off** — `/etc/ssh/sshd_config.d/99-endurecer.conf`:
    ```
    PermitRootLogin no
    PasswordAuthentication no
    KbdInteractiveAuthentication no
    ```
-   Sin contraseña que adivinar, la fuerza bruta deja de ser una amenaza.
-5. **Cortafuegos ufw activo** — solo abiertos SSH, 80 y 443. Todo lo demás, cerrado.
-6. **Docker instalado** desde el repositorio oficial, verificando la firma GPG.
-   `docker run hello-world` corrió correctamente. Docker Compose v5.4.0.
+   With no password to guess, brute force stops being a threat. This went in as a drop-in
+   file rather than an edit to `sshd_config`, so it survives package upgrades.
+5. **ufw enabled** — SSH, 80 and 443 open. Everything else closed.
+6. **Docker installed** from the official repository, with the GPG signature verified.
 
-**Verificado, no asumido:**
-- `sudo sshd -T | grep -Ei "permitrootlogin|passwordauthentication"` → `no` y `no`
-- Sesión nueva abierta con la llave antes de cerrar la que funcionaba
-- `docker run hello-world` ejecutó el contenedor de prueba
+**Verified, not assumed:**
+
+- `sudo sshd -T | grep -Ei "permitrootlogin|passwordauthentication"` → `no` and `no`
+- Opened a second session with the key *before* closing the one that worked
+- `docker run hello-world` ran the test container
 - `docker compose version` → v5.4.0
 
-**Dos cosas que aprendí a golpes:**
+**Two things I learned the hard way:**
 
-- **Mirar el prompt antes de teclear.** `PS C:\...` es mi PC; `usuario@homelab` es el
-  servidor. Intenté conectarme por SSH desde dentro del servidor, dos veces.
-- **Autorizar antes de encender el cortafuegos.** Primero `ufw allow OpenSSH`, después
-  `ufw enable`. Al revés te deja afuera de tu propio servidor.
+- **Read the prompt before typing.** `PS C:\...` is my machine; `user@homelab` is the
+  server. I tried to SSH into the server from inside the server. Twice.
+- **Allow before you enable.** `ufw allow OpenSSH` first, `ufw enable` second. The other way
+  around locks you out of your own box.
 
-**Siguiente:** apuntar un subdominio al servidor y levantar n8n con HTTPS.
+**Next:** point a subdomain at the server and bring up n8n over HTTPS.
 
-### Día 2 — 7 de agosto de 2026 · n8n con HTTPS y dominio propio
+### Day 2 — August 7, 2026 · n8n over HTTPS on my own domain
 
-n8n corriendo en `https://n8n.sikorre.com`, detrás de Caddy, con certificado de Let's Encrypt
-que se renueva solo. Desplegado sin editar un solo archivo en el servidor.
+n8n running behind Caddy with a Let's Encrypt certificate that renews itself. Deployed
+without editing a single file on the server.
 
-**El flujo, que es el punto de este día:**
+**The workflow is the point of this day:**
 
-1. Los archivos se escriben en el PC, dentro del repo clonado.
-2. `git push` a GitHub.
-3. En el servidor, `git clone` y `docker compose up -d`.
+1. Files are written on my machine, inside the cloned repo.
+2. `git push` to GitHub.
+3. On the server: `git clone`, then `docker compose up -d`.
 
-El servidor es runtime, no build server. Lo único que existe allá y no está en este repo es
-el `.env` — porque contiene secretos y por definición no puede versionarse.
+The server is a runtime, not a build server. The only file that exists there and not in this
+repo is `.env` — it holds secrets, so by definition it cannot be versioned.
 
-**Lo que se montó:**
+**What went up:**
 
-- **Registro DNS tipo A** apuntando el subdominio al servidor, con el **proxy de Cloudflare
-  apagado** (nube gris). Con el proxy encendido, Cloudflare intercepta el desafío de
-  Let's Encrypt y el certificado nunca se emite.
-- **Caddy** como proxy inverso. Consigue y renueva el certificado sin intervención, y añade
-  cuatro cabeceras de seguridad (HSTS, nosniff, SAMEORIGIN, referrer-policy).
-- **n8n sin puertos publicados.** No está expuesto a internet: solo Caddy lo está, y le pasa
-  el tráfico por la red privada de Docker.
-- **Secretos generados en el servidor**, nunca copiados de otro lado ni escritos a mano:
-  `openssl rand -base64 32`. El `.env` con permisos `600`.
-- **2FA activado** en la cuenta de dueño.
+- **An A record** pointing the subdomain at the server, with the **Cloudflare proxy turned
+  off** (grey cloud). With the orange cloud on, Cloudflare intercepts the ACME challenge and
+  the certificate never gets issued.
+- **Caddy** as the reverse proxy. It obtains and renews the certificate with no intervention,
+  and adds four security headers (HSTS, nosniff, SAMEORIGIN, referrer-policy).
+- **n8n publishes no ports.** It is not exposed to the internet — only Caddy is, and it
+  reaches n8n over Docker's private network.
+- **Secrets generated on the server**, never copied from elsewhere and never typed by hand:
+  `openssl rand -base64 32`. `.env` set to mode `600`.
+- **2FA enabled** on the owner account.
 
-**Verificado, no asumido:**
+**Verified, not assumed:**
 
 - `docker compose exec n8n wget -qO- http://localhost:5678/healthz` → `{"status":"ok"}`
-- `docker compose logs caddy | grep -i "certificate obtained"` → certificado emitido
-- `https://n8n.sikorre.com/healthz` desde fuera del servidor → HTTP 200
-- Certificado emitido para `n8n.sikorre.com` por Let's Encrypt, válido hasta el 5 de noviembre
+- `docker compose logs caddy | grep -i "certificate obtained"` → certificate issued
+- `/healthz` requested from outside the server → HTTP 200
+- Certificate issued by Let's Encrypt, valid through November 5, 2026
 
-**El error del día: rotar la clave de cifrado rompió n8n.**
+**The mistake of the day: rotating the encryption key broke n8n.**
 
-Al cambiar `N8N_ENCRYPTION_KEY` en el `.env`, n8n entró en bucle de reinicio y el sitio
-devolvía 502. El log dijo lo que ninguna guía decía:
+I changed `N8N_ENCRYPTION_KEY` in `.env`. n8n went into a restart loop and the site started
+returning 502. The log said what none of the guides did:
 
 ```
 Error: Mismatching encryption keys. The encryption key in the settings file
 /home/node/.n8n/config does not match the N8N_ENCRYPTION_KEY env var.
 ```
 
+**n8n keeps a second copy of that key inside its own data volume.** Changing `.env` alone is
+not enough — `/home/node/.n8n/config` has to be updated to match.
 
+There is an earlier trap too: the same key encrypts the 2FA secret and its recovery codes.
+Rotate it while 2FA is on and you lock yourself out of your own instance. **Disable 2FA
+before rotating, re-enable it after.**
 
-**n8n guarda una segunda copia de la clave dentro de su volumen de datos.** Cambiar solo el
-`.env` no basta: hay que actualizar también `/home/node/.n8n/config`.
+Neither of those came from a search engine. Both came from reading the logs of the program
+that was failing.
 
-Y hay una trampa antes de esa: la misma clave cifra el secreto del 2FA y sus códigos de
-respaldo. Rotarla con el 2FA activo te deja fuera de tu propia instancia. **El 2FA se
-desactiva antes de rotar y se reactiva después.**
-
-Ninguna de las dos cosas salió buscando en Google. Salieron de leer los registros del
-programa que estaba fallando.
-
-**Siguiente:** automatizar el `git pull` del servidor con GitHub Actions.
-
-
+**Next:** automate the server's `git pull` with GitHub Actions.
 
 ---
 
-## Nota de seguridad
+## What this is not
 
-Este repo es público. Aquí nunca entran: la llave SSH privada, archivos `.env`, ni
-contraseñas. El `.gitignore` los bloquea.
+A lab in progress, not a finished template. There are no automated backups yet, no
+monitoring, and no automated deploys. That is the order they are coming in.
 
+## A note on secrets
 
+This repository is public. The private SSH key, `.env` files and passwords never go in here.
+`.gitignore` blocks them.
