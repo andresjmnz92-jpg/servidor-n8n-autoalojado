@@ -10,9 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
       - name: Preguntarle a n8n si sigue vivo
         env:
           N8N_URL: ${{ secrets.N8N_URL }}
-        run: python3 vigilante.py
+        run: curl -fsS --retry 3 --retry-delay 20 "$N8N_URL/healthz" | grep -q '"ok"'
