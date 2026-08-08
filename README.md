@@ -143,14 +143,63 @@ to check out. Removing code removed a whole dependency.
 **And the alarm was tested both ways.** Green against the real URL, and **red** against a path
 that doesn't exist. An alarm you have never seen fire is an assumption, not a warning.
 
-**What is still weak**, stated plainly:
+### Part three · Get the backups off the box, then prove they work
 
-- The backup lives on the same disk it protects. It covers human error and a bad upgrade; it does
-  not cover that disk dying.
-- No backup has been restored yet. Until one is, it's an assumption.
+A backup stored on the same disk it protects is a copy, not a backup. And one that has never been
+restored is an assumption, not insurance. Both were fixed the same day.
 
-**Next:** move backups off the server, restore one as a drill, and automate the `git pull` with
-GitHub Actions.
+**Off-site: Cloudflare R2.** 10 GB free, permanently. The backups are ~480 KB each, so ninety
+days fit in 40 MB. Paying for storage was ruled out — no point paying to move 3 MB.
+
+The token is scoped to **a single bucket** with object read/write only. If it leaks, it reaches
+nothing else in the account. One detail that costs half an hour if you don't know it: with a
+token scoped that way, `rclone` needs `no_check_bucket = true`, or it fails trying to verify a
+bucket the token isn't allowed to list.
+
+**The bug worth writing down:** every upload failed with `NotImplemented: 501` on the first
+attempt and succeeded on the second. The backup "worked", but left an error on every run — the
+kind of noise that trains you to ignore errors.
+
+A **7-byte** test file failing the same way gave it away: that rules out size, multipart and
+chunking, and leaves only headers. The cause was the version — `apt` ships rclone **v1.60.1, from
+November 2022**. A four-year-old client talking to a service that no longer accepts what it
+sends. With the official build (v1.75.0) the error was gone, verified with `--retries 1` so no
+retry could hide it.
+
+> On a strange S3 error, check `rclone version` first. Distro packages can run years behind the
+> cloud services they talk to.
+
+**The restore drill, done properly.** Without touching the live instance: a fresh volume, a
+throwaway n8n pointed at it, and then ask it what's inside.
+
+```bash
+docker volume create n8n_data_test
+docker run --rm -v n8n_data_test:/data -v /home/user/backups:/backup alpine \
+  sh -c "cd /data && tar xzf /backup/n8n-YYYY-MM-DD.tar.gz"
+docker run -d --name n8n-test --env-file /path/to/.env \
+  -v n8n_data_test:/home/node/.n8n docker.n8n.io/n8nio/n8n:stable
+docker exec n8n-test n8n list:workflow      # <- the proof
+docker rm -f n8n-test && docker volume rm n8n_data_test
+```
+
+`n8n list:workflow` returned the workflows with their exact IDs, out of a `.tar.gz`. The live
+instance was then confirmed untouched and still answering 200 from outside.
+
+**Three things the drill taught:**
+
+- **SQLite's `-wal` file is part of the backup.** `database.sqlite` was two hours older than
+  `database.sqlite-wal`, and the most recent work lived in that `-wal`. Copying only the
+  `.sqlite` would have restored a database missing the last few hours. Copying the whole volume
+  avoids that classic mistake.
+- **Without the encryption key, the backup doesn't open.** The `.tar.gz` and the key are two
+  pieces that only work together — which is why they live in different places.
+- **Restores are tested on a separate volume, never on top of the live one.** One underscore
+  separates `n8n_data_test` from `n8n_data`, and all your data from none of it.
+
+**And it was done on day two on purpose:** with the instance nearly empty, the drill isn't scary.
+With client credentials inside, it is — and scary things get postponed forever.
+
+**Next:** automate the `git pull` with GitHub Actions.
 
 ---
 

@@ -143,14 +143,65 @@ que descargar. Quitar código quitó una dependencia entera.
 **Y la alarma se probó en los dos sentidos.** Verde con la URL buena, y **rojo** apuntándola a
 una ruta que no existe. Una alarma que nunca se ha visto sonar es una suposición, no un aviso.
 
-**Lo que todavía está débil**, dicho sin adornos:
+### Tercera parte · Sacar los respaldos y probar que sirven
 
-- El respaldo vive en el mismo disco que protege. Cubre el error humano y la actualización que
-  rompe algo; no cubre que el disco muera.
-- Ningún respaldo se ha restaurado todavía. Hasta que eso pase, es una suposición.
+Un respaldo guardado en el mismo disco que protege no es un respaldo, es una copia. Y uno que
+nunca se ha restaurado no es un seguro, es una suposición. Las dos cosas se arreglaron el mismo
+día.
 
-**Siguiente:** sacar los respaldos del servidor, restaurar uno de prueba, y automatizar el
-`git pull` con GitHub Actions.
+**Fuera del servidor: Cloudflare R2.** 10 GB gratis permanentes. Los respaldos pesan ~480 KB, así
+que noventa días caben en 40 MB. Se descartó pagar almacenamiento: no tiene sentido pagar por
+mover 3 MB.
+
+El token está limitado a **un solo bucket** con permiso de lectura y escritura de objetos. Si se
+filtra, no alcanza nada más de la cuenta. Detalle que cuesta media hora si no se sabe: con un
+token acotado así, `rclone` necesita `no_check_bucket = true` — si no, falla al intentar
+comprobar un bucket que el token no puede listar.
+
+**El bug que enseñó algo:** cada subida fallaba con `NotImplemented: 501` en el primer intento y
+pasaba en el segundo. El respaldo "funcionaba", pero dejaba un error en cada corrida — el tipo de
+ruido que acostumbra a ignorar los errores.
+
+Lo delató un archivo de prueba de **7 bytes** que fallaba igual: eso descarta tamaño, subida por
+partes y trozos, y deja solo los encabezados. La causa era la versión: `apt` instala rclone
+**v1.60.1, de noviembre de 2022**. Un cliente de hace cuatro años hablándole a un servicio que ya
+no acepta lo que le manda. Con la versión oficial (v1.75.0) el error desapareció, verificado con
+`--retries 1` para que ningún reintento lo tapara.
+
+> Ante un error raro de S3, lo primero es `rclone version`. Las herramientas de `apt` pueden ir
+> años por detrás de los servicios en la nube con los que hablan.
+
+**La restauración, probada de verdad.** Sin tocar la instancia viva: volumen nuevo, un n8n
+temporal apuntando a él, y a preguntarle qué tiene adentro.
+
+```bash
+docker volume create n8n_data_prueba
+docker run --rm -v n8n_data_prueba:/data -v /home/usuario/respaldos:/backup alpine \
+  sh -c "cd /data && tar xzf /backup/n8n-AAAA-MM-DD.tar.gz"
+docker run -d --name n8n-prueba --env-file /ruta/al/.env \
+  -v n8n_data_prueba:/home/node/.n8n docker.n8n.io/n8nio/n8n:stable
+docker exec n8n-prueba n8n list:workflow      # <- la prueba
+docker rm -f n8n-prueba && docker volume rm n8n_data_prueba
+```
+
+`n8n list:workflow` devolvió los workflows con sus IDs exactos, salidos de un `.tar.gz`. Después
+se comprobó que la instancia real seguía intacta y respondiendo 200 desde fuera.
+
+**Tres cosas que enseñó el ejercicio:**
+
+- **El `-wal` de SQLite es parte del respaldo.** El `database.sqlite` era de dos horas antes que
+  el `database.sqlite-wal`, y en ese `-wal` vivía el trabajo más reciente. Copiar solo el
+  `.sqlite` habría restaurado una base sin las últimas horas. Copiar el volumen completo evita
+  ese error clásico.
+- **Sin la clave de cifrado, el respaldo no abre.** El `.tar.gz` y la clave son dos piezas que
+  solo sirven juntas, y por eso viven en sitios distintos.
+- **La restauración se prueba en un volumen aparte, nunca encima del vivo.** Entre
+  `n8n_data_prueba` y `n8n_data` hay un guion bajo de diferencia y todos los datos del mundo.
+
+**Y se hizo hoy a propósito:** con la instancia casi vacía el ejercicio no da miedo. Con
+credenciales de clientes adentro, da miedo — y lo que da miedo se pospone para siempre.
+
+**Siguiente:** automatizar el `git pull` con GitHub Actions.
 
 ---
 
