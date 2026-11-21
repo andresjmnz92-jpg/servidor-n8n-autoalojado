@@ -196,6 +196,9 @@ Written down because a status without its gaps isn't a status.
   `restrict,command="/path/deploy.sh"` — so a leaked key can only deploy, never open a shell.
 - **n8n runs in single mode with SQLite.** Fine for this load; a queue mode with Postgres is what
   a multi-tenant setup would need.
+- **The agents' chat memory lives in its own Postgres** (`postgres-agentes`), separate from n8n's
+  SQLite and from the RAG database. No published port. **It is not in the nightly backup yet:**
+  the backup copies `n8n_data` only.
 - **n8n upgrades are manual on purpose.** `N8N_IMAGE_TAG` is pinned, because it breaks across
   major versions and an unattended upgrade of the thing running a client's bot is not a risk worth
   automating.
