@@ -48,7 +48,27 @@ services:
     networks:
       - n8n_net
 
+  # Memoria de chat de los agentes (Postgres Chat Memory). n8n sigue en SQLite.
+  postgres-agentes:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=agentes
+      - POSTGRES_USER=agentes
+      - POSTGRES_PASSWORD=${AGENTES_DB_PASSWORD:?falta AGENTES_DB_PASSWORD en .env}
+    volumes:
+      - agentes_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentes -d agentes"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n_net
+
 volumes:
+  agentes_pgdata:
+    name: agentes_pgdata
   n8n_data:
     name: n8n_data
   caddy_data:

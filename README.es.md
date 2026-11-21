@@ -199,6 +199,9 @@ Va escrito porque un estado sin sus huecos no es un estado.
   solo pueda desplegar y nunca abrir una shell.
 - **n8n corre en modo single con SQLite.** Suficiente para esta carga; un modo de cola con Postgres
   es lo que pediría un montaje multiinquilino.
+- **La memoria de chat de los agentes vive en su propio Postgres** (`postgres-agentes`), aparte del
+  SQLite de n8n y de la base del RAG. Sin puerto publicado. **Todavía no entra en el respaldo
+  nocturno:** el respaldo copia solo `n8n_data`.
 - **Las actualizaciones de n8n son manuales a propósito.** `N8N_IMAGE_TAG` está fijado, porque rompe
   entre versiones mayores y actualizar sin supervisión lo que corre el bot de un cliente no es un
   riesgo que valga la pena automatizar.
